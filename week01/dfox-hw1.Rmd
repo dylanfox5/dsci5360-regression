@@ -1,0 +1,96 @@
+---
+title: "dfox-hw1"
+author: "dfox"
+date: "5/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ISLR)
+library(tidyverse)
+library(ggplot2)
+library(naniar)
+library(corrplot)
+library(coefplot)
+library(faraway)
+
+df <- Auto
+```
+
+## Initial EDA
+
+To start the EDA phase, we look at a few basic attributes of our dataset.
+
+```{r, results='hide'}
+str(df)
+head(df)
+summary(df)
+```
+
+Next we select the columns that will be useful to us and look at the relationship between variables.
+
+```{r, results='hide'}
+df1 <- df %>%
+  select("mpg", "cylinders", "displacement", "horsepower", "weight", "acceleration", "year")
+
+plot(df1)
+correlations = cor(df1)
+corrplot(correlations)
+```
+
+Here is an example of one of the graphs used to examine the relationship between mpg, weight, and cylinders.
+
+```{r, results='hide'}
+ggplot(df1, aes(x = mpg, y = weight)) + geom_point(aes(color = cylinders))
+```
+
+Based on the graph above, we can tell that heavier cars will tend to have a lower mpg and more cylinders. The same is true for lighter cars: higher mpg and less cylinders.
+
+## Base Model
+
+To start building our model, let's use all potential variables to predict mpg. From there, we can examine the characteristics of this base model and start to select our variables.
+
+```{r}
+lm1 = lm(mpg ~ cylinders + horsepower + weight + displacement + year + acceleration, data=df1)
+summary(lm1)
+```
+
+Based on the results from this model, we see that weight and year are significant variables in predicting mpg. Going forward we will incorporate those in our final model.
+
+## Variable Selection
+
+With a base model created, we can iterate on it by adding/removing variables to determine if they add significance or not. With weight and year already being significant, we'll iterate through adding the rest of the variables to see if they add significance to our model or not. Here is an example of adding cylinders to the model.
+
+```{r}
+lm2 <- lm(mpg ~ weight + year + cylinders, data=df1)
+summary(lm2)
+```
+
+After going through each variable, we can determine that none of them add signifiance to our model. This means that we can move forward with a model of using just weight and year to predict mpg.
+
+```{r}
+lm3 <- lm(mpg ~ weight + year, data=df1)
+summary(lm3)
+```
+
+## Diagnostics
+
+Now we can run diagnostics to check the assumptions of our model.
+
+```{r}
+halfnorm(hatvalues(lm3))
+termplot(lm3, partial=TRUE, terms=1)
+```
+
+## Predictions
+
+We can also replicate data into a new dataset and predict the mpg for those observations.
+
+```{r}
+ex <- data.frame(weight=rep(df1$weight), year=rep(df1$year))
+pred <- predict(lm3, new=ex)
+```
+
+## Interpertation
+
+After going through this exercise, we can determine that weight and year variables play the most significant role in predicting the mpg of a vehicle. While other variables can be used to predict the mpg value, weight and year provide about 80% of the variance. And including other variables in our model does not significantly improve past 80%, meaning that it's not worth including in our final model.
