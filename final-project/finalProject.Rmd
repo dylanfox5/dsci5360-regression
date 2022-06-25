@@ -1,0 +1,125 @@
+---
+title: "Predicting Flu Rates in Paris"
+author: "dfox"
+date: "6/24/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(xts)
+library(astsa)
+library(forecast)
+
+df <- read.csv("/Users/dylanfox/OneDrive - Graceland University/Graduate Work/dsci5360-regression_time_series/final-project/ParisFlu.csv")
+df$date <- as.Date(df$date)
+ts <- xts(df$flu.rate, df$date)
+```
+
+## Exploratory Analysis
+
+We can begin our analysis of the flu rates in Paris by plotting our time series data. This set contains data from 2004-2013; capturing the flu rate once a week for those years.
+
+```{r, echo=FALSE}
+ts.plot(ts)
+```
+
+As shown in the plot, Paris sees a rather consistent trend over the course of this decade. The rates look fairly low for about a year, then quickly increase, and followed by quickly decreasing again. Since we are investing flu rates, we can use outside knowledge of the fact that rates tend to spike in the winter months; therefore, our data will most likely reflect that. Judging by the consistent trend over this decade, this remains true.
+
+To continue our analysis, let's try detrending and differencing the data.
+
+```{r}
+# detrending 
+fit <- lm(ts ~ time(ts), na.action=NULL)
+ts.plot(resid(fit))
+acf1(resid(fit), 48, main="detrended flu rate")
+```
+
+Now, differencing.
+
+```{r}
+# differencing
+ts.plot(diff(ts))
+acf1(diff(ts), 48, main="differenced flu rate")
+```
+
+The goal of detrending or differencing is coerce our data into being stationary. We can see that detrending the data doesn't exactly accomplish much. But, differencing the data does accomplish what we'd like. This lets us know that we should potentiall use our differenced data in our modeling.
+
+## ARIMA Model
+
+After exploring the data, we can move into modeling our data. We start with using an ARIMA model. This will use auto regressive functions with integrating the moving average of our data.
+
+We start with using the auto.arima() function that will help determine the parameter of our ARIMA model.
+
+```{r}
+auto.arima(diff(ts), seasonal=FALSE)
+```
+
+Despite the differenced data looking optimistic at the beginning, it actually does not provide a better forecase of the data than using our original time series (more about this later on). So we will continue using our original time series.
+
+```{r}
+auto.arima(ts, seasonal=FALSE)
+```
+
+By running this command, we can see that we our model should be ARIMA(2, 0, 3). Let's take a look.
+
+```{r}
+sarima(ts, p=2, d=0, q=3)
+```
+
+## SARIMA Model
+
+Next, we can use a similar process for finding our SARIMA model.
+
+```{r}
+auto.arima(ts, seasonal=TRUE)
+```
+
+And we can see it returns similar results as our ARIMA model. A SARIMA(0, 0, 0)x(2, 0, 3).
+
+## Mixed SARIMA Model
+
+Finally, let's find a mixed SARIMA Model.
+
+```{r}
+sarima(ts, p=2, d=0, q=0, P=0, D=0, Q=3, 12)
+```
+
+## Model Selection
+
+We are going to move forward with using our SAIRMA(0, 0, 0)x(2, 0, 3) model. Let's take a look at the following diagnostics of the model.
+
+```{r}
+sarima(ts, p=0, d=0, q=0, P=2, D=0, Q=3, 12)
+```
+
+The plots above tell us a number of things. The standardized residuals might follow a trend, but it's hard to tell. The p-values are less than 0.0.5 so this tells us to reject the null hypothesis of the residuals being white noise. The ACF of residuals appear to follow the same trend as the ACF of the data. The QQ plot does suggest a normality assumption, but there may be some outliers with some magnitude greater than 4.
+
+## Forecasting Within Data
+
+Using our SARIMA model, we can subset our data and remove the last year from the data. Then we can forecast with the new subset data and compare it to our original data set.
+
+```{r}
+ts_sub <- ts[1:468]
+sarima.for(ts_sub, n.ahead=52, p=0, d=0, q=0, P=2, D=0, Q=3, 12, plot.all=TRUE)
+ts.plot(ts)
+```
+
+Although it doesn't match the actual results, it does provide a decent forecast. The beginning of the forecast provides a similar decreasing trend that we would see once the increase is finished. In addition, it makes sense that the forecast would rather decrease than increase in this instance. This is because the previous spikes were tailing off and not quite reaching a maximum level. But, the reality of this spike was that it did spike quite a bit more.
+
+## Forecasting One Year Ahead
+
+Next, we can use our original data to forecast one year into the future by using a similar process as before.
+
+```{r}
+sarima.for(ts, n.ahead=52, p=0, d=0, q=0, P=2, D=0, Q=3, 12, plot.all=TRUE)
+```
+
+## Summary
+
+Comparing the two forecasts, we see similar results. The first forecast displays the decreasing trend and follows it with an increasing spike. The second forecast follows suit as well. It displays the increasing results we expect, but does not quite reach the maximum values that are likely to occur; it proceeds to decrease. Due to the previous trend over the decade, we should expect to see one of the increased spikes occur when we forecast into the future. We do see an increase, but it's not all that accurate.
+
+While it may not be the most accurate, it does help Paris identify about when the next spike is going to occur. And based on previous data, they are able to determine about how large of an increase that should happen. In addition, we do see some negative values present in our forecast. This is not intuitive and not possible; therefore, a further investigation would be required to refine this model.
+
+Overall, this SARIMA model does do well to match the trend of the data but is unable to display the most accurate prediction. This will be a good indicator for Paris to use to determine when the next spike is going to take place and how soon the spike is going to decrease. Determining the maximum and minimum values may be more difficult to be accurate for.
